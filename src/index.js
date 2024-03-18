@@ -1,11 +1,9 @@
-const express = require('express')
-const bodyParser = require('body-parser')
-const fs = require('fs');
+const express = require('express');
+const bodyParser = require('body-parser');
 const pdf = require('pdfkit');
-const app = express()
-const port = 3333
-
-
+const { PassThrough } = require('stream');
+const app = express();
+const port = 3333;
 
 let laboratorios = [
     { nome: 'Laboratório 1', capacidade: 50, descricao: 'Laboratório de Biologia' },
@@ -16,7 +14,6 @@ let laboratorios = [
     { nome: 'Laboratório 6', capacidade: 25, descricao: 'Laboratório de Artes' }
 ];
 
-
 const horarioMiddleware = (req, res, next) => {
     const horaAtual = new Date().getHours();
     if (horaAtual < 8 || horaAtual >= 17) {
@@ -25,10 +22,10 @@ const horarioMiddleware = (req, res, next) => {
     next();
 };
 
-
-const gerarRelatorioPDF = (req, res, next) => {
+const gerarRelatorioPDF = (laboratorios) => {
     const doc = new pdf();
-    doc.pipe(fs.createWriteStream('relatorio_laboratorios.pdf'));
+    const stream = new PassThrough();
+    doc.pipe(stream);
     doc.fontSize(14).text('Relatório de Laboratórios\n\n', { align: 'center' });
 
     laboratorios.forEach(laboratorio => {
@@ -36,16 +33,22 @@ const gerarRelatorioPDF = (req, res, next) => {
     });
 
     doc.end();
-    next();
+    return stream;
 };
 
 app.use(bodyParser.json());
 
+app.get('/', (req, res) => {
+    res.json({
+        "Para ver os laboratorios Existentes, adcione": "/laboratorio/todos",
+        "para fazer o donwload do relatorio, adcione": "/laboratorio/relatorio",
+        "Para cadastrar um novo laboratorio, adcione": "/laboratorio/todos/novo"
+    });
+});
 
 app.get('/laboratorio/todos', (req, res) => {
     res.json(laboratorios);
 });
-
 
 app.post('/laboratorio/novo', (req, res) => {
     const novoLaboratorio = req.body;
@@ -53,21 +56,15 @@ app.post('/laboratorio/novo', (req, res) => {
     res.status(201).send('Laboratório cadastrado com sucesso!');
 });
 
-
 app.use(horarioMiddleware);
 
-
-app.get('/laboratorio/relatorio', gerarRelatorioPDF, (req, res) => {
-    res.download('relatorio_laboratorios.pdf', 'relatorio_laboratorios.pdf', (err) => {
-        if (err) {
-            res.status(500).send('Erro ao baixar o arquivo PDF');
-        } else {
-            fs.unlinkSync('relatorio_laboratorios.pdf'); 
-        }
-    });
+app.get('/laboratorio/relatorio', (req, res) => {
+    const stream = gerarRelatorioPDF(laboratorios);
+    res.setHeader('Content-Disposition', 'attachment; filename="relatorio_laboratorios.pdf"');
+    res.setHeader('Content-Type', 'application/pdf');
+    stream.pipe(res);
 });
 
-
 app.listen(port, () => {
-  console.log(`App runninig on port ${port}`)
-})
+    console.log(`App runninig on port ${port}`);
+});
